@@ -30,7 +30,7 @@ import requests
 import xlsxwriter
 
 # Rate limiting configuration
-AZADVERTIZER_RATE_LIMIT_SECONDS = 0.1  # 0.1 seconds between AzAdvertizer requests
+AZADVERTIZER_RATE_LIMIT_SECONDS = 0.2  # 0.2 seconds between AzAdvertizer requests
 GITHUB_RATE_LIMIT_SECONDS = 0.1  # Delay between GitHub API requests
 
 # GitHub repository
