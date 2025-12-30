@@ -30,7 +30,7 @@ import requests
 import xlsxwriter
 
 # Rate limiting configuration
-AZADVERTIZER_RATE_LIMIT_SECONDS = 0.2  # 0.2 seconds between AzAdvertizer requests
+AZADVERTIZER_RATE_LIMIT_SECONDS = 0.1  # 0.1 seconds between AzAdvertizer requests
 GITHUB_RATE_LIMIT_SECONDS = 0.1  # Delay between GitHub API requests
 
 # GitHub repository
@@ -554,6 +554,7 @@ class ESLZPolicyExtractor:
                         "enforcement_mode": assignment.enforcement_mode,
                         "category": policy.category,
                         "azadvertizer_url": policy.azadvertizer_url,
+                        "github_url": assignment.github_url,
                     })
 
         log(f"  Initiative rows: {len(self.initiative_rows)}")
@@ -586,21 +587,25 @@ class ESLZPolicyExtractor:
         })
         bold_format = wb.add_format({'bold': True})
 
-        # === Initiatives Sheet ===
-        ws1 = wb.add_worksheet("Initiatives")
+        # Separate policies into direct assignments vs initiative-expanded
+        direct_policies = [p for p in self.policy_rows if p["assignment_type"] == "Individual"]
+        initiative_policies = [p for p in self.policy_rows if p["assignment_type"] == "Via Initiative"]
 
-        headers1 = [
+        # === 1. Assigned Initiatives Sheet ===
+        ws_init = wb.add_worksheet("Assigned Initiatives")
+
+        init_headers = [
             "Assignment Name", "Initiative Definition ID", "Initiative Display Name",
             "Archetype (Scope)", "Enforcement Mode", "Policy Count",
             "Category", "Version", "AzAdvertizer Link (Definition)", "GitHub Link (Assignment)", "Include"
         ]
 
-        for col, h in enumerate(headers1):
-            ws1.write(0, col, h, header_format)
+        for col, h in enumerate(init_headers):
+            ws_init.write(0, col, h, header_format)
 
-        # Add Yes/No data validation for Include column (last column, index 10)
-        include_col = len(headers1) - 1  # Last column
-        ws1.data_validation(1, include_col, len(self.initiative_rows), include_col, {
+        # Add Yes/No data validation for Include column
+        init_include_col = len(init_headers) - 1
+        ws_init.data_validation(1, init_include_col, len(self.initiative_rows), init_include_col, {
             'validate': 'list',
             'source': ['Yes', 'No'],
             'input_title': 'Include in Breakdown',
@@ -612,120 +617,189 @@ class ESLZPolicyExtractor:
                 item["assignment_name"], item["initiative_name"], item["initiative_display_name"],
                 item["archetype"], item["enforcement_mode"], item["policy_count"],
                 item["category"], item["version"], item["azadvertizer_url"], item["github_url"],
-                "No"  # Include column defaults to No
+                "No"
             ]
             for col, val in enumerate(values):
-                ws1.write(row_idx, col, val, cell_format)
+                ws_init.write(row_idx, col, val, cell_format)
 
-        widths1 = [30, 40, 50, 20, 18, 12, 20, 10, 60, 60, 10]
-        for col, w in enumerate(widths1):
-            ws1.set_column(col, col, w)
-        ws1.freeze_panes(1, 1)
-        ws1.autofilter(0, 0, len(self.initiative_rows), len(headers1) - 1)
+        init_widths = [30, 40, 50, 20, 18, 12, 20, 10, 60, 60, 10]
+        for col, w in enumerate(init_widths):
+            ws_init.set_column(col, col, w)
+        ws_init.freeze_panes(1, 1)
+        ws_init.autofilter(0, 0, len(self.initiative_rows), len(init_headers) - 1)
 
-        # === Policies Sheet ===
-        ws2 = wb.add_worksheet("Policies")
+        # === 2. Assigned Policies Sheet (direct policy assignments only) ===
+        ws_direct = wb.add_worksheet("Assigned Policies")
 
-        headers2 = [
-            "Policy Definition ID", "Policy Display Name", "Effect", "Parameters",
-            "Assignment Type", "Initiative Definition ID", "Initiative Display Name",
-            "Assignment Name", "Archetype (Scope)", "Enforcement Mode", "Category",
-            "AzAdvertizer Link (Definition)"
+        direct_headers = [
+            "Assignment Name", "Policy Definition ID", "Policy Display Name",
+            "Archetype (Scope)", "Enforcement Mode", "Effect", "Parameters",
+            "Category", "AzAdvertizer Link (Definition)", "GitHub Link (Assignment)", "Include"
         ]
 
-        for col, h in enumerate(headers2):
-            ws2.write(0, col, h, header_format)
+        for col, h in enumerate(direct_headers):
+            ws_direct.write(0, col, h, header_format)
 
-        # Sort: Individual first, then by initiative, then by policy name
-        sorted_rows = sorted(
-            self.policy_rows,
-            key=lambda x: (0 if x["assignment_type"] == "Individual" else 1,
-                          x["initiative_name"], x["policy_name"])
-        )
+        # Add Yes/No data validation for Include column
+        direct_include_col = len(direct_headers) - 1
+        ws_direct.data_validation(1, direct_include_col, len(direct_policies), direct_include_col, {
+            'validate': 'list',
+            'source': ['Yes', 'No'],
+            'input_title': 'Include in Breakdown',
+            'input_message': 'Select Yes to include in Policy Breakdown'
+        })
 
-        for row_idx, item in enumerate(sorted_rows, 1):
+        # Sort by archetype then policy name
+        sorted_direct = sorted(direct_policies, key=lambda x: (x["archetype"], x["policy_name"]))
+
+        for row_idx, item in enumerate(sorted_direct, 1):
             values = [
-                item["policy_name"], item["policy_display_name"], item["effect"],
-                item["parameters"], item["assignment_type"], item["initiative_name"],
-                item["initiative_display_name"], item["assignment_name"],
-                item["archetype"], item["enforcement_mode"], item["category"],
-                item["azadvertizer_url"]
+                item["assignment_name"], item["policy_name"], item["policy_display_name"],
+                item["archetype"], item["enforcement_mode"], item["effect"],
+                item["parameters"], item["category"], item["azadvertizer_url"],
+                item.get("github_url", ""),
+                "No"
             ]
             for col, val in enumerate(values):
-                ws2.write(row_idx, col, val, cell_format)
+                ws_direct.write(row_idx, col, val, cell_format)
 
-        widths2 = [45, 55, 18, 40, 15, 40, 50, 30, 20, 18, 20, 60]
-        for col, w in enumerate(widths2):
-            ws2.set_column(col, col, w)
-        ws2.freeze_panes(1, 0)
-        ws2.autofilter(0, 0, len(sorted_rows), len(headers2) - 1)
+        direct_widths = [30, 45, 55, 20, 18, 18, 40, 20, 60, 60, 10]
+        for col, w in enumerate(direct_widths):
+            ws_direct.set_column(col, col, w)
+        ws_direct.freeze_panes(1, 1)
+        ws_direct.autofilter(0, 0, len(sorted_direct), len(direct_headers) - 1)
 
-        # === Policy Data Sheet (hidden, for FILTER reference) ===
+        # === 3. Initiative Policies Sheet (policies expanded from initiatives) ===
+        ws_init_pol = wb.add_worksheet("Initiative Policies")
+
+        init_pol_headers = [
+            "Initiative Definition ID", "Initiative Display Name", "Assignment Name",
+            "Archetype (Scope)", "Policy Definition ID", "Policy Display Name",
+            "Effect", "Parameters", "Category", "AzAdvertizer Link (Definition)"
+        ]
+
+        for col, h in enumerate(init_pol_headers):
+            ws_init_pol.write(0, col, h, header_format)
+
+        # Sort by initiative then policy name
+        sorted_init_pol = sorted(initiative_policies, key=lambda x: (x["initiative_name"], x["policy_name"]))
+
+        for row_idx, item in enumerate(sorted_init_pol, 1):
+            values = [
+                item["initiative_name"], item["initiative_display_name"], item["assignment_name"],
+                item["archetype"], item["policy_name"], item["policy_display_name"],
+                item["effect"], item["parameters"], item["category"], item["azadvertizer_url"]
+            ]
+            for col, val in enumerate(values):
+                ws_init_pol.write(row_idx, col, val, cell_format)
+
+        init_pol_widths = [40, 50, 30, 20, 45, 55, 18, 40, 20, 60]
+        for col, w in enumerate(init_pol_widths):
+            ws_init_pol.set_column(col, col, w)
+        ws_init_pol.freeze_panes(1, 0)
+        ws_init_pol.autofilter(0, 0, len(sorted_init_pol), len(init_pol_headers) - 1)
+
+        # === Hidden Data Sheet for FILTER reference ===
+        # Unified structure with SourceRow for INDEX lookup
         ws_data = wb.add_worksheet("_PolicyData")
         ws_data.hide()
 
-        # Include a composite key (InitID|Archetype) for scope-aware matching
-        data_headers = ["InitDisplayName", "InitID", "Archetype", "InitKey", "PolicyDisplayName", "PolicyID", "Effect", "Parameters", "Category"]
+        # Columns: Source, SourceRow, ParentName, ParentID, Archetype, PolicyDisplayName, PolicyID, Effect, Parameters, Category
+        data_headers = ["Source", "SourceRow", "ParentName", "ParentID", "Archetype",
+                       "PolicyDisplayName", "PolicyID", "Effect", "Parameters", "Category"]
         for col, h in enumerate(data_headers):
             ws_data.write(0, col, h)
 
+        # Build mapping of (initiative_name, archetype) -> row number in Assigned Initiatives
+        init_row_map = {}
+        for row_idx, item in enumerate(self.initiative_rows, 2):  # Excel rows start at 2 (after header)
+            key = (item["initiative_name"], item["archetype"])
+            init_row_map[key] = row_idx
+
+        # Build mapping for direct policies -> row number in Assigned Policies
+        direct_row_map = {}
+        for row_idx, item in enumerate(sorted_direct, 2):  # Excel rows start at 2
+            key = (item["policy_name"], item["archetype"])
+            direct_row_map[key] = row_idx
+
         data_row = 1
-        for item in sorted_rows:
-            if item["assignment_type"] == "Via Initiative":
-                init_key = f"{item['initiative_name']}|{item['archetype']}"
-                ws_data.write(data_row, 0, item["initiative_display_name"])
-                ws_data.write(data_row, 1, item["initiative_name"])
-                ws_data.write(data_row, 2, item["archetype"])
-                ws_data.write(data_row, 3, init_key)  # Composite key for matching
-                ws_data.write(data_row, 4, item["policy_display_name"])
-                ws_data.write(data_row, 5, item["policy_name"])
-                ws_data.write(data_row, 6, item["effect"])
-                ws_data.write(data_row, 7, item["parameters"])
-                ws_data.write(data_row, 8, item["category"])
-                data_row += 1
+
+        # Add initiative policies with reference to source row
+        for item in sorted_init_pol:
+            init_key = (item["initiative_name"], item["archetype"])
+            source_row = init_row_map.get(init_key, 0)
+            ws_data.write(data_row, 0, "Initiative")
+            ws_data.write(data_row, 1, source_row)
+            ws_data.write(data_row, 2, item["initiative_display_name"])
+            ws_data.write(data_row, 3, item["initiative_name"])
+            ws_data.write(data_row, 4, item["archetype"])
+            ws_data.write(data_row, 5, item["policy_display_name"])
+            ws_data.write(data_row, 6, item["policy_name"])
+            ws_data.write(data_row, 7, item["effect"])
+            ws_data.write(data_row, 8, item["parameters"])
+            ws_data.write(data_row, 9, item["category"])
+            data_row += 1
+
+        # Add direct policies with reference to source row
+        for item in sorted_direct:
+            direct_key = (item["policy_name"], item["archetype"])
+            source_row = direct_row_map.get(direct_key, 0)
+            ws_data.write(data_row, 0, "Direct")
+            ws_data.write(data_row, 1, source_row)
+            ws_data.write(data_row, 2, item["policy_display_name"])
+            ws_data.write(data_row, 3, item["policy_name"])
+            ws_data.write(data_row, 4, item["archetype"])
+            ws_data.write(data_row, 5, item["policy_display_name"])
+            ws_data.write(data_row, 6, item["policy_name"])
+            ws_data.write(data_row, 7, item["effect"])
+            ws_data.write(data_row, 8, item["parameters"])
+            ws_data.write(data_row, 9, item["category"])
+            data_row += 1
 
         num_data_rows = data_row
-        num_initiatives = len(self.initiative_rows) + 1
 
-        # === Policy Breakdown Sheet ===
-        ws3 = wb.add_worksheet("Policy Breakdown")
+        # === 4. Policy Breakdown Sheet ===
+        ws_breakdown = wb.add_worksheet("Policy Breakdown")
 
         # Instructions
-        ws3.merge_range('A1:H1', "Policy Breakdown - Filtered by Selected Initiatives", title_format)
-        ws3.write('A3', "Instructions:", bold_format)
-        ws3.write('A4', "1. Go to the 'Initiatives' sheet")
-        ws3.write('A5', "2. In the 'Include' column (column K), set 'Yes' for initiatives you want to analyze")
-        ws3.write('A6', "3. Return to this sheet - policies are filtered by both initiative AND scope")
-        ws3.write('A7', "Note: Requires Excel 365 or Excel 2021+ for dynamic arrays")
+        ws_breakdown.merge_range('A1:I1', "Policy Breakdown - Filtered by Selected Initiatives and Policies", title_format)
+        ws_breakdown.write('A3', "Instructions:", bold_format)
+        ws_breakdown.write('A4', "1. Go to 'Assigned Initiatives' sheet and set 'Include' to 'Yes' for initiatives to analyze")
+        ws_breakdown.write('A5', "2. Go to 'Assigned Policies' sheet and set 'Include' to 'Yes' for direct policies to analyze")
+        ws_breakdown.write('A6', "3. Results appear in the combined table below (scope-aware)")
+        ws_breakdown.write('A7', "Note: Requires Excel 365 or Excel 2021+ for dynamic arrays")
 
-        # Headers for the filtered results (includes Scope now)
+        # Headers for the combined filtered results
         breakdown_headers = [
-            "Initiative Display Name", "Initiative Definition ID", "Archetype (Scope)",
+            "Source", "Parent Name", "Parent ID", "Archetype (Scope)",
             "Policy Display Name", "Policy Definition ID", "Effect", "Parameters", "Category"
         ]
         for col, h in enumerate(breakdown_headers):
-            ws3.write(8, col, h, header_format)
+            ws_breakdown.write(9, col, h, header_format)
 
-        # FILTER formula using composite key (InitID|Archetype) for scope-aware matching
-        # Initiatives sheet: B = InitID, D = Archetype, K = Include, so composite key = B&"|"&D
-        filter_formula = (
-            f"=IFERROR(FILTER("
-            f"CHOOSECOLS('_PolicyData'!A2:I{num_data_rows},1,2,3,5,6,7,8,9),"
-            f"ISNUMBER(MATCH('_PolicyData'!D2:D{num_data_rows},"
-            f'FILTER(Initiatives!$B$2:$B${num_initiatives}&"|"&Initiatives!$D$2:$D${num_initiatives},Initiatives!$K$2:$K${num_initiatives}="Yes",""),0))'
-            f'),"No initiatives selected - set Include to Yes on Initiatives sheet")'
+        # Combined filter using INDEX to look up Include value from source sheets
+        # _PolicyData: A=Source, B=SourceRow, C=ParentName, D=ParentID, E=Archetype, F=PolicyDisplayName, G=PolicyID, H=Effect, I=Parameters, J=Category
+        # We want columns: A, C, D, E, F, G, H, I, J (skip B which is SourceRow)
+        # Assigned Initiatives: K = Include column
+        # Assigned Policies: K = Include column
+        combined_filter = (
+            f'=IFERROR(CHOOSECOLS(FILTER('
+            f"'_PolicyData'!A2:J{num_data_rows},"
+            f"(('_PolicyData'!A2:A{num_data_rows}=\"Initiative\")*(INDEX('Assigned Initiatives'!$K:$K,'_PolicyData'!B2:B{num_data_rows})=\"Yes\"))+"
+            f"(('_PolicyData'!A2:A{num_data_rows}=\"Direct\")*(INDEX('Assigned Policies'!$K:$K,'_PolicyData'!B2:B{num_data_rows})=\"Yes\"))"
+            f'),1,3,4,5,6,7,8,9,10),'
+            f'"No items selected - set Include to Yes on Assigned Initiatives or Assigned Policies sheets")'
         )
+        ws_breakdown.write_dynamic_array_formula('A11', combined_filter)
 
-        ws3.write_dynamic_array_formula('A10', filter_formula)
-
-        widths3 = [50, 40, 20, 55, 45, 18, 40, 25]
-        for col, w in enumerate(widths3):
-            ws3.set_column(col, col, w)
-        ws3.freeze_panes(9, 0)
+        breakdown_widths = [12, 50, 40, 20, 55, 45, 18, 40, 25]
+        for col, w in enumerate(breakdown_widths):
+            ws_breakdown.set_column(col, col, w)
+        ws_breakdown.freeze_panes(10, 0)
 
         wb.close()
-        log(f"  Saved: {len(self.initiative_rows)} initiatives, {len(self.policy_rows)} policies")
-        log(f"  Policy data rows for breakdown: {num_data_rows - 1}")
+        log(f"  Saved: {len(self.initiative_rows)} initiatives, {len(direct_policies)} direct policies, {len(initiative_policies)} initiative policies")
+        log(f"  Data rows for breakdown: {num_data_rows - 1}")
 
     def run(self):
         """Run the extraction."""

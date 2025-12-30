@@ -37,9 +37,9 @@ Options:
 
 ## Output
 
-The script generates an Excel workbook with three worksheets:
+The script generates an Excel workbook with four worksheets:
 
-### 1. Initiatives
+### 1. Assigned Initiatives
 
 Lists all policy initiatives assigned via ESLZ archetypes:
 
@@ -57,33 +57,49 @@ Lists all policy initiatives assigned via ESLZ archetypes:
 | GitHub Link | Link to assignment file on GitHub |
 | Include | Set to "Yes" to include in Policy Breakdown |
 
-### 2. Policies
+### 2. Assigned Policies
 
-Lists all individual policies (directly assigned + expanded from initiatives):
+Lists policies that are directly assigned (not via initiatives):
 
 | Column | Description |
 |--------|-------------|
-| Assignment Type | "Direct" or "Via Initiative" |
 | Assignment Name | Name of the policy assignment |
-| Initiative Display Name | Parent initiative (if via initiative) |
-| Initiative Definition ID | Parent initiative ID |
-| Archetype (Scope) | Which ESLZ archetype assigns this |
-| Policy Display Name | Human-readable policy name |
 | Policy Definition ID | Policy definition ID |
+| Policy Display Name | Human-readable policy name |
+| Archetype (Scope) | Which ESLZ archetype assigns this |
+| Enforcement Mode | Default or DoNotEnforce |
 | Effect | Policy effect (Audit, Deny, Deploy, etc.) |
 | Parameters | Policy parameters as JSON |
 | Category | Policy category |
 | AzAdvertizer Link | Link to definition on AzAdvertizer |
 | GitHub Link | Link to assignment file on GitHub |
+| Include | Set to "Yes" to include in Policy Breakdown |
 
-### 3. Policy Breakdown
+### 3. Initiative Policies
 
-Dynamic worksheet that filters policies based on initiatives selected in the Initiatives sheet:
+Lists all policies expanded from initiatives (informational, no Include column):
 
-1. Go to the **Initiatives** sheet
-2. Set **Include** to "Yes" for initiatives you want to analyze
-3. Return to **Policy Breakdown** - shows only policies from selected initiatives
-4. Filtering is scope-aware (same initiative at different scopes won't show duplicates)
+| Column | Description |
+|--------|-------------|
+| Initiative Definition ID | Parent initiative ID |
+| Initiative Display Name | Parent initiative name |
+| Assignment Name | Name of the policy assignment |
+| Archetype (Scope) | Which ESLZ archetype assigns this |
+| Policy Definition ID | Policy definition ID |
+| Policy Display Name | Human-readable policy name |
+| Effect | Policy effect (Audit, Deny, Deploy, etc.) |
+| Parameters | Policy parameters as JSON |
+| Category | Policy category |
+| AzAdvertizer Link | Link to definition on AzAdvertizer |
+
+### 4. Policy Breakdown
+
+Dynamic worksheet that combines policies from selected initiatives AND selected direct policies:
+
+1. Go to **Assigned Initiatives** sheet and set **Include** to "Yes" for initiatives to analyze
+2. Go to **Assigned Policies** sheet and set **Include** to "Yes" for direct policies to analyze
+3. Return to **Policy Breakdown** - shows combined results from both selections
+4. Filtering is scope-aware (same item at different scopes won't show duplicates)
 
 ## Data Sources
 
