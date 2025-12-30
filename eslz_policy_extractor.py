@@ -704,9 +704,9 @@ class ESLZPolicyExtractor:
         ws_data = wb.add_worksheet("_PolicyData")
         ws_data.hide()
 
-        # Columns: Source, SourceRow, ParentName, ParentID, Archetype, PolicyDisplayName, PolicyID, Effect, Parameters, Category
-        data_headers = ["Source", "SourceRow", "ParentName", "ParentID", "Archetype",
-                       "PolicyDisplayName", "PolicyID", "Effect", "Parameters", "Category"]
+        # Columns: Source, SourceRow, ParentName, ParentAssignmentID, Archetype, PolicyDisplayName, PolicyID, Effect, Parameters, Category, AzAdvertizerLink
+        data_headers = ["Source", "SourceRow", "ParentName", "ParentAssignmentID", "Archetype",
+                       "PolicyDisplayName", "PolicyID", "Effect", "Parameters", "Category", "AzAdvertizerLink"]
         for col, h in enumerate(data_headers):
             ws_data.write(0, col, h)
 
@@ -731,13 +731,14 @@ class ESLZPolicyExtractor:
             ws_data.write(data_row, 0, "Initiative")
             ws_data.write(data_row, 1, source_row)
             ws_data.write(data_row, 2, item["initiative_display_name"])
-            ws_data.write(data_row, 3, item["initiative_name"])
+            ws_data.write(data_row, 3, item["assignment_name"])
             ws_data.write(data_row, 4, item["archetype"])
             ws_data.write(data_row, 5, item["policy_display_name"])
             ws_data.write(data_row, 6, item["policy_name"])
             ws_data.write(data_row, 7, item["effect"])
             ws_data.write(data_row, 8, item["parameters"])
             ws_data.write(data_row, 9, item["category"])
+            ws_data.write(data_row, 10, item["azadvertizer_url"])
             data_row += 1
 
         # Add direct policies with reference to source row
@@ -747,13 +748,14 @@ class ESLZPolicyExtractor:
             ws_data.write(data_row, 0, "Direct")
             ws_data.write(data_row, 1, source_row)
             ws_data.write(data_row, 2, item["policy_display_name"])
-            ws_data.write(data_row, 3, item["policy_name"])
+            ws_data.write(data_row, 3, item["assignment_name"])
             ws_data.write(data_row, 4, item["archetype"])
             ws_data.write(data_row, 5, item["policy_display_name"])
             ws_data.write(data_row, 6, item["policy_name"])
             ws_data.write(data_row, 7, item["effect"])
             ws_data.write(data_row, 8, item["parameters"])
             ws_data.write(data_row, 9, item["category"])
+            ws_data.write(data_row, 10, item["azadvertizer_url"])
             data_row += 1
 
         num_data_rows = data_row
@@ -771,28 +773,28 @@ class ESLZPolicyExtractor:
 
         # Headers for the combined filtered results
         breakdown_headers = [
-            "Source", "Parent Name", "Parent ID", "Archetype (Scope)",
-            "Policy Display Name", "Policy Definition ID", "Effect", "Parameters", "Category"
+            "Source", "Parent Name", "Parent Assignment ID", "Archetype (Scope)",
+            "Policy Display Name", "Policy Definition ID", "Effect", "Parameters", "Category", "AzAdvertizer Link"
         ]
         for col, h in enumerate(breakdown_headers):
             ws_breakdown.write(9, col, h, header_format)
 
         # Combined filter using INDEX to look up Include value from source sheets
-        # _PolicyData: A=Source, B=SourceRow, C=ParentName, D=ParentID, E=Archetype, F=PolicyDisplayName, G=PolicyID, H=Effect, I=Parameters, J=Category
-        # We want columns: A, C, D, E, F, G, H, I, J (skip B which is SourceRow)
+        # _PolicyData: A=Source, B=SourceRow, C=ParentName, D=ParentAssignmentID, E=Archetype, F=PolicyDisplayName, G=PolicyID, H=Effect, I=Parameters, J=Category, K=AzAdvertizerLink
+        # We want columns: A, C, D, E, F, G, H, I, J, K (skip B which is SourceRow)
         # Assigned Initiatives: K = Include column
         # Assigned Policies: K = Include column
         combined_filter = (
             f'=IFERROR(CHOOSECOLS(FILTER('
-            f"'_PolicyData'!A2:J{num_data_rows},"
+            f"'_PolicyData'!A2:K{num_data_rows},"
             f"(('_PolicyData'!A2:A{num_data_rows}=\"Initiative\")*(INDEX('Assigned Initiatives'!$K:$K,'_PolicyData'!B2:B{num_data_rows})=\"Yes\"))+"
             f"(('_PolicyData'!A2:A{num_data_rows}=\"Direct\")*(INDEX('Assigned Policies'!$K:$K,'_PolicyData'!B2:B{num_data_rows})=\"Yes\"))"
-            f'),1,3,4,5,6,7,8,9,10),'
+            f'),1,3,4,5,6,7,8,9,10,11),'
             f'"No items selected - set Include to Yes on Assigned Initiatives or Assigned Policies sheets")'
         )
         ws_breakdown.write_dynamic_array_formula('A11', combined_filter)
 
-        breakdown_widths = [12, 50, 40, 20, 55, 45, 18, 40, 25]
+        breakdown_widths = [12, 50, 35, 20, 55, 45, 18, 40, 25, 60]
         for col, w in enumerate(breakdown_widths):
             ws_breakdown.set_column(col, col, w)
         ws_breakdown.freeze_panes(10, 0)
